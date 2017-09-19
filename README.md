@@ -42,3 +42,5 @@ TIPS
 
 * If you put this script in your path (I just symlink it under ~/bin), then
   git should be able to invoke it as `git cpm`.
+* If you don't care about preserving the merge structure, then you might
+  consider using something like `git cherry-pick -m1`
