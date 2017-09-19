@@ -1,0 +1,94 @@
+#!/bin/bash
+
+# git-cpm - cherry pick simple merges
+
+main() {
+    GITDIR=$(git rev-parse --git-dir)
+    if test -z "$GITDIR" || ! test -d "$GITDIR"
+    then
+        echo "Can't determine git directory"
+    fi
+    if test -e "$GITDIR/git-cpm-info"
+    then
+        read -r BASE MERGEREF < "$GITDIR/git-cpm-info"
+        if test ".$1" = ".abort"
+        then
+            do_abort
+            exit
+        fi
+        echo "Found cherry-pick-merge in progress: $MERGEREF onto $BASE"
+        # TODO verify refs
+        do_rebase_check
+    else
+        BASE=$(git rev-parse --abbrev-ref HEAD)
+        MERGEREF=$1
+        do_rebase_check
+    fi
+    if ! git rev-parse $MERGEREF^2 >/dev/null
+    then
+        echo "$MERGEREF does not appear to be a merge commit"
+        exit 1
+    fi
+    if test -e "$GITDIR/git-cpm-info"
+    then
+        echo "Continuing after manual rebase"
+        rm -f "$GITDIR/git-cpm-info"
+    else
+        # check out the original branch that was merged
+        if ! run git checkout $MERGEREF^2
+        then
+            echo "Unable to check out merge branch"
+            exit 1
+        fi
+        echo "Currently at: $(git rev-parse HEAD)"
+        # rebase the contents of the original merge onto new base
+        # ($MERGEREF^1 should be the original branch point
+        run git log --oneline --graph --decorate "$MERGEREF^1"..HEAD
+        if ! run git rebase --onto "$BASE" "$MERGEREF^1" HEAD
+        then
+            echo "Rebase operation failed. Please fix the rebase and rerun"
+            echo "$BASE $MERGEREF" > "$GITDIR/git-cpm-info"
+            exit 1
+        fi
+    fi
+    echo "Rebase complete. Proceeding to merge into $BASE"
+    msg=$(git show --pretty=%B $MERGEREF)
+    br=$(git rev-parse HEAD)
+    if ! run git checkout $BASE
+    then
+        echo "Could not checkout original base ref"
+        # should not happen
+        exit 1
+    fi
+    if ! run git merge -m "$msg" --no-ff $br
+    then
+        echo "Merge failed"
+        # should not happen
+        exit 1
+    fi
+}
+
+run() {
+    echo "Running: $*"
+    "$@"
+    return $?
+}
+
+do_abort() {
+    run git rebase --abort
+    run git checkout $BASE
+    rm -f "$GITDIR/git-cpm-info"
+}
+
+do_rebase_check() {
+    if test -d "$GITDIR/rebase-merge" || test -d "$GITDIR/rebase-apply"
+    then
+        echo "Found a rebase in progress"
+        echo "Please complete the rebase before continuing"
+        echo "Alternately abort the rebase and start over"
+        exit 1
+    fi
+}
+
+
+main "$@"
