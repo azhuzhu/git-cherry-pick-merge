@@ -20,7 +20,7 @@ main() {
         # TODO verify refs
         do_rebase_check
     else
-        BASE=$(git rev-parse --abbrev-ref HEAD)
+        get_base
         MERGEREF=$1
         do_rebase_check
     fi
@@ -67,6 +67,24 @@ main() {
         exit 1
     fi
 }
+
+
+get_base () {
+    local base
+    base=$(git rev-parse --abbrev-ref HEAD)
+    if test "$base" = HEAD
+    then
+        echo "trying to determine detached head"
+        base=$(git branch |grep '^[*].* detached at' |sed 's/^.* detached at \(.*\))/\1/')
+        if test -z "$base"
+        then
+            base=$(git rev-parse HEAD)
+        fi
+        echo "detached head at $base"
+    fi
+    BASE=$base
+}
+
 
 run() {
     echo "Running: $*"
